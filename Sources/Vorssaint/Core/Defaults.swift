@@ -68,7 +68,7 @@ enum DefaultsKey {
     static let smoothScrollCoast = "smoothScrollCoast" // 0...100, higher coasts the same distance out longer
     static let mouseNavigationEnabled = "mouseNavigationEnabled" // side buttons trigger Back and Forward
     static let mouseButtonShortcutsEnabled = "mouseButtonShortcutsEnabled" // extra buttons press a key combination (issue #282)
-    static let mouseButtonShortcuts = "mouseButtonShortcuts" // [button number: GlobalShortcut storage value]
+    static let mouseButtonShortcuts = "mouseButtonShortcuts" // [button number: GlobalShortcut or media:<action>]
     static let mouseSpacesGestureEnabled = "mouseSpacesGestureEnabled" // hold a button and drag to switch Spaces (issue #1012)
     static let mouseSpacesGestureButton = "mouseSpacesGestureButton"   // button number, 0 while none is chosen
     static let mouseSpacesGestureFollowsDrag = "mouseSpacesGestureFollowsDrag" // the Space moves with the hand, the way natural scrolling does

@@ -41,7 +41,7 @@ final class MouseButtonShortcutService: ObservableObject {
     /// opening the wheel. Main thread only, like the taps that read it.
     private(set) static var isCaptureActive = false
 
-    private var mappings: [Int64: GlobalShortcut] = [:]
+    private var mappings: [Int64: MouseButtonAction] = [:]
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var tapIncludesSideWheel = false
@@ -376,7 +376,7 @@ final class MouseButtonShortcutService: ObservableObject {
             if button == spacesButton {
                 return armSpacesGesture(event, button: button)
             }
-            guard let shortcut = MouseButtonShortcutSupport.firesShortcut(
+            guard let action = MouseButtonShortcutSupport.firesShortcut(
                 for: button,
                 isAvailable: AppFeature.mouseButtonShortcuts.isAvailable,
                 isEnabled: UserDefaults.standard.bool(forKey: DefaultsKey.mouseButtonShortcutsEnabled),
@@ -384,7 +384,7 @@ final class MouseButtonShortcutService: ObservableObject {
                 claimedByWheel: RadialMenuSupport.claimsMouseButton)
             else { return Unmanaged.passUnretained(event) }
             consumedButtons.insert(button)
-            post(shortcut)
+            post(action)
             return nil
         }
 
@@ -537,7 +537,7 @@ final class MouseButtonShortcutService: ObservableObject {
             }
             return nil
         }
-        guard let shortcut = mappings[input] else { return Unmanaged.passUnretained(event) }
+        guard let action = mappings[input] else { return Unmanaged.passUnretained(event) }
         let sourceProcessID = event.getIntegerValueField(.eventSourceUnixProcessID)
         if !wasPreflighted,
            MouseAppExceptions.shared.excludesActionTarget(
@@ -546,7 +546,7 @@ final class MouseButtonShortcutService: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
         guard sideWheelGesture.shouldFire(input, at: timestamp) else { return nil }
-        post(shortcut)
+        post(action)
         return nil
     }
 
@@ -580,6 +580,19 @@ final class MouseButtonShortcutService: ObservableObject {
                 point: Double(event.getIntegerValueField(.scrollWheelEventPointDeltaAxis2))
             )
         )
+    }
+
+    private func post(_ action: MouseButtonAction) {
+        switch action {
+        case .shortcut(let shortcut):
+            post(shortcut)
+        case .media(let media):
+            if let auxKeyType = media.auxKeyType {
+                MediaAuxKeySupport.postPress(auxKeyType: auxKeyType)
+            } else if media == .nowPlaying {
+                RadialNowPlayingService.shared.presentDetails(at: NSEvent.mouseLocation)
+            }
+        }
     }
 
     /// The shortcut goes out as a virtual key plus the flags a real press of

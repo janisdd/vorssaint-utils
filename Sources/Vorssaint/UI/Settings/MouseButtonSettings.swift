@@ -56,10 +56,10 @@ struct MouseButtonShortcutsSection: View {
                             .foregroundStyle(.secondary)
                     }
                     ForEach(MouseButtonShortcutSupport.sortedButtons(mappings), id: \.self) { button in
-                        mappingRow(button, shortcut: mappings[button])
+                        mappingRow(button, action: mappings[button])
                     }
                     if let pendingButton {
-                        mappingRow(pendingButton, shortcut: nil)
+                        mappingRow(pendingButton, action: nil)
                     }
                     captureRow
                 }
@@ -125,8 +125,11 @@ struct MouseButtonShortcutsSection: View {
 
     // MARK: - Rows
 
-    private func mappingRow(_ button: Int64, shortcut: GlobalShortcut?) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
+    private func mappingRow(_ button: Int64, action: MouseButtonAction?) -> some View {
+        let shortcut = action?.shortcut
+        let media = action?.media
+        let radial = FeatureStrings.radialMenu(l10n.language)
+        return VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 8) {
                 Text(MouseButtonShortcutSupport.buttonName(for: button, strings: text))
                 Spacer()
@@ -142,6 +145,25 @@ struct MouseButtonShortcutsSection: View {
                                        invalidAction: { setRecordError(l10n.s.shortcutInvalid, button) },
                                        captureAction: { save(button: button, shortcut: $0) })
                     .frame(width: 108)
+                Menu {
+                    ForEach(MouseButtonMediaAction.allCases) { item in
+                        Button {
+                            save(button: button, media: item)
+                        } label: {
+                            if media == item {
+                                Label(mediaTitle(item, radial: radial), systemImage: "checkmark")
+                            } else {
+                                Text(mediaTitle(item, radial: radial))
+                            }
+                        }
+                    }
+                } label: {
+                    Text(media.map { mediaTitle($0, radial: radial) } ?? text.mediaMenuPlaceholder)
+                        .lineLimit(1)
+                }
+                .controlSize(.small)
+                .fixedSize()
+                .accessibilityLabel(text.mediaMenuPlaceholder)
                 Button {
                     remove(button)
                 } label: {
@@ -162,11 +184,23 @@ struct MouseButtonShortcutsSection: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            if shortcut != nil, RadialMenuSupport.claimsMouseButton(button) {
+            if action != nil, RadialMenuSupport.claimsMouseButton(button) {
                 Text(text.rowWheelNote)
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
+        }
+    }
+
+    private func mediaTitle(_ media: MouseButtonMediaAction,
+                            radial: RadialMenuFeatureStrings) -> String {
+        switch media {
+        case .playPause: return radial.mediaPlayPause
+        case .previousTrack: return radial.mediaPrevious
+        case .nextTrack: return radial.mediaNext
+        case .nowPlaying: return radial.mediaNowPlaying
+        case .volumeUp: return text.mediaVolumeUp
+        case .volumeDown: return text.mediaVolumeDown
         }
     }
 
@@ -351,7 +385,15 @@ struct MouseButtonShortcutsSection: View {
     }
 
     private func save(button: Int64, shortcut: GlobalShortcut) {
-        mappings[button] = shortcut
+        save(button: button, action: .shortcut(shortcut))
+    }
+
+    private func save(button: Int64, media: MouseButtonMediaAction) {
+        save(button: button, action: .media(media))
+    }
+
+    private func save(button: Int64, action: MouseButtonAction) {
+        mappings[button] = action
         if pendingButton == button { pendingButton = nil }
         setRecordError(nil, button)
         persist()

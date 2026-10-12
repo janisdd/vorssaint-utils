@@ -3,6 +3,67 @@
 
 import Foundation
 
+/// Media actions a mouse button can press. Play/pause/prev/next/now playing
+/// match the radial menu; volume up/down use the system aux codes.
+enum MouseButtonMediaAction: String, CaseIterable, Identifiable, Hashable {
+    case playPause
+    case previousTrack
+    case nextTrack
+    case nowPlaying
+    case volumeUp
+    case volumeDown
+
+    var id: String { rawValue }
+
+    /// Aux-button code for a systemDefined media key, or nil for Now Playing.
+    var auxKeyType: Int32? {
+        switch self {
+        case .playPause: return 16
+        case .previousTrack: return 20
+        case .nextTrack: return 19
+        case .nowPlaying: return nil
+        case .volumeUp: return PreciseVolumeMediaKey.volumeUp.rawValue
+        case .volumeDown: return PreciseVolumeMediaKey.volumeDown.rawValue
+        }
+    }
+}
+
+/// One mapped mouse input: either a keyboard shortcut or a media action.
+enum MouseButtonAction: Equatable, Hashable {
+    case shortcut(GlobalShortcut)
+    case media(MouseButtonMediaAction)
+
+    private static let mediaPrefix = "media:"
+
+    init?(storageValue: String) {
+        if storageValue.hasPrefix(Self.mediaPrefix) {
+            let raw = String(storageValue.dropFirst(Self.mediaPrefix.count))
+            guard let media = MouseButtonMediaAction(rawValue: raw) else { return nil }
+            self = .media(media)
+            return
+        }
+        guard let shortcut = GlobalShortcut(storageValue: storageValue) else { return nil }
+        self = .shortcut(shortcut)
+    }
+
+    var storageValue: String {
+        switch self {
+        case .shortcut(let shortcut): return shortcut.storageValue
+        case .media(let media): return Self.mediaPrefix + media.rawValue
+        }
+    }
+
+    var shortcut: GlobalShortcut? {
+        if case .shortcut(let shortcut) = self { return shortcut }
+        return nil
+    }
+
+    var media: MouseButtonMediaAction? {
+        if case .media(let media) = self { return media }
+        return nil
+    }
+}
+
 /// The pure half of the mouse button shortcuts feature: which buttons can
 /// carry a shortcut, how the mappings persist and who owns a button when two
 /// features could answer the same click.
@@ -103,37 +164,37 @@ enum MouseButtonShortcutSupport {
         return horizontalDelta > 0 ? sideWheelLeftInput : sideWheelRightInput
     }
 
-    /// Mappings persist as a plain dictionary of button number to the same
-    /// storage form every other shortcut in the app uses. Anything that does
-    /// not parse (a hand-edited plist, an imported backup from a newer
+    /// Mappings persist as a plain dictionary of button number to either a
+    /// keyboard shortcut storage value or a `media:` action. Anything that
+    /// does not parse (a hand-edited plist, an imported backup from a newer
     /// version) is dropped rather than trusted.
-    static func decode(_ raw: [String: String]?) -> [Int64: GlobalShortcut] {
+    static func decode(_ raw: [String: String]?) -> [Int64: MouseButtonAction] {
         guard let raw else { return [:] }
-        var mappings: [Int64: GlobalShortcut] = [:]
+        var mappings: [Int64: MouseButtonAction] = [:]
         for (key, value) in raw {
             guard let button = Int64(key), canMap(button),
-                  let shortcut = GlobalShortcut(storageValue: value) else { continue }
-            mappings[button] = shortcut
+                  let action = MouseButtonAction(storageValue: value) else { continue }
+            mappings[button] = action
         }
         return mappings
     }
 
-    static func encode(_ mappings: [Int64: GlobalShortcut]) -> [String: String] {
+    static func encode(_ mappings: [Int64: MouseButtonAction]) -> [String: String] {
         var raw: [String: String] = [:]
-        for (button, shortcut) in mappings where canMap(button) {
-            raw[String(button)] = shortcut.storageValue
+        for (button, action) in mappings where canMap(button) {
+            raw[String(button)] = action.storageValue
         }
         return raw
     }
 
-    /// Whether a button fires its shortcut right now, given plain readers so
+    /// Whether a button fires its mapping right now, given plain readers so
     /// the rule is testable without touching real defaults. The radial menu
     /// keeps its summoner: a wheel button never doubles as a shortcut.
     static func firesShortcut(for button: Int64,
                               isAvailable: Bool,
                               isEnabled: Bool,
-                              mappings: [Int64: GlobalShortcut],
-                              claimedByWheel: (Int64) -> Bool) -> GlobalShortcut? {
+                              mappings: [Int64: MouseButtonAction],
+                              claimedByWheel: (Int64) -> Bool) -> MouseButtonAction? {
         guard isAvailable, isEnabled, !claimedByWheel(button) else { return nil }
         return mappings[button]
     }
@@ -167,18 +228,18 @@ enum MouseButtonShortcutSupport {
             claimedByWheel: RadialMenuSupport.claimsMouseButton)
     }
 
-    /// A stored shortcut that would really fire. A mapping left behind while
+    /// A stored mapping that would really fire. A mapping left behind while
     /// the shortcut switch is off is inert, so it holds no claim on a button.
     private static func hasActiveShortcut(_ button: Int64, _ defaults: UserDefaults) -> Bool {
         guard defaults.bool(forKey: DefaultsKey.mouseButtonShortcutsEnabled) else { return false }
         let raw = defaults.dictionary(forKey: DefaultsKey.mouseButtonShortcuts) as? [String: String]
         guard let stored = raw?[String(button)] else { return false }
-        return GlobalShortcut(storageValue: stored) != nil
+        return MouseButtonAction(storageValue: stored) != nil
     }
 
     /// The rows in Settings sort by button number so the list never reorders
     /// itself between visits.
-    static func sortedButtons(_ mappings: [Int64: GlobalShortcut]) -> [Int64] {
+    static func sortedButtons(_ mappings: [Int64: MouseButtonAction]) -> [Int64] {
         mappings.keys.sorted()
     }
 

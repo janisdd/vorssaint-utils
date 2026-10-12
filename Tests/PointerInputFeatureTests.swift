@@ -1821,6 +1821,7 @@ enum PointerInputFeatureTests {
                "tap recovery keeps custody only for extra buttons still physically held")
 
         let buttonCombo = GlobalShortcut(keyCode: 0, modifiers: [.command, .shift])
+        let buttonAction = MouseButtonAction.shortcut(buttonCombo)
         let decodedButtons = MouseButtonShortcutSupport.decode([
             "3": buttonCombo.storageValue,
             "4": "command:11",
@@ -1830,21 +1831,36 @@ enum PointerInputFeatureTests {
             "junk": "command:11",
             "5": "garbage",
             "6": ":48",
+            "7": "media:volumeDown",
+            "8": "media:playPause",
+            "9": "media:foo",
+            "10": "media:",
         ])
-        suite.expect(decodedButtons.count == 3 && decodedButtons[3] == buttonCombo && decodedButtons[4] != nil
-                && decodedButtons[MouseButtonShortcutSupport.sideWheelLeftInput] != nil,
-               "decoding keeps valid button and side-wheel mappings and drops everything else")
+        suite.expect(decodedButtons.count == 5
+                && decodedButtons[3] == buttonAction
+                && decodedButtons[4] != nil
+                && decodedButtons[MouseButtonShortcutSupport.sideWheelLeftInput] != nil
+                && decodedButtons[7] == .media(.volumeDown)
+                && decodedButtons[8] == .media(.playPause),
+               "decoding keeps valid shortcut and media mappings and drops everything else")
         suite.expect(MouseButtonShortcutSupport.decode(MouseButtonShortcutSupport.encode(decodedButtons))
                 == decodedButtons,
                "mappings round-trip through their stored form")
         suite.expect(MouseButtonShortcutSupport.decode(nil).isEmpty,
                "no stored mappings decode to none")
+        suite.expect(MouseButtonMediaAction.playPause.auxKeyType == 16
+                && MouseButtonMediaAction.previousTrack.auxKeyType == 20
+                && MouseButtonMediaAction.nextTrack.auxKeyType == 19
+                && MouseButtonMediaAction.nowPlaying.auxKeyType == nil
+                && MouseButtonMediaAction.volumeUp.auxKeyType == PreciseVolumeMediaKey.volumeUp.rawValue
+                && MouseButtonMediaAction.volumeDown.auxKeyType == PreciseVolumeMediaKey.volumeDown.rawValue,
+               "mouse media actions use the same aux codes as radial play keys and system volume")
         suite.expect(MouseButtonShortcutSupport.sortedButtons([
-            5: buttonCombo,
-            MouseButtonShortcutSupport.sideWheelRightInput: buttonCombo,
-            MouseButtonShortcutSupport.sideWheelLeftInput: buttonCombo,
-            3: buttonCombo,
-            12: buttonCombo,
+            5: buttonAction,
+            MouseButtonShortcutSupport.sideWheelRightInput: buttonAction,
+            MouseButtonShortcutSupport.sideWheelLeftInput: buttonAction,
+            3: buttonAction,
+            12: buttonAction,
         ]) == [MouseButtonShortcutSupport.sideWheelLeftInput,
                MouseButtonShortcutSupport.sideWheelRightInput, 3, 5, 12],
                "settings rows keep side-wheel directions together before numbered buttons")
@@ -1892,21 +1908,25 @@ enum PointerInputFeatureTests {
                "stopping the tap clears the side-wheel gesture state")
 
         suite.expect(MouseButtonShortcutSupport.firesShortcut(for: 3, isAvailable: true, isEnabled: true,
-                                                        mappings: [3: buttonCombo],
-                                                        claimedByWheel: { _ in false }) == buttonCombo,
+                                                        mappings: [3: buttonAction],
+                                                        claimedByWheel: { _ in false }) == buttonAction,
                "an available, enabled mapping fires its combination")
         suite.expect(MouseButtonShortcutSupport.firesShortcut(for: 3, isAvailable: true, isEnabled: true,
-                                                        mappings: [3: buttonCombo],
+                                                        mappings: [3: .media(.volumeUp)],
+                                                        claimedByWheel: { _ in false }) == .media(.volumeUp),
+               "an available, enabled media mapping fires its action")
+        suite.expect(MouseButtonShortcutSupport.firesShortcut(for: 3, isAvailable: true, isEnabled: true,
+                                                        mappings: [3: buttonAction],
                                                         claimedByWheel: { $0 == 3 }) == nil,
                "the radial menu's summoner button never doubles as a shortcut")
         suite.expect(MouseButtonShortcutSupport.firesShortcut(for: 3, isAvailable: false, isEnabled: true,
-                                                        mappings: [3: buttonCombo],
+                                                        mappings: [3: buttonAction],
                                                         claimedByWheel: { _ in false }) == nil
                 && MouseButtonShortcutSupport.firesShortcut(for: 3, isAvailable: true, isEnabled: false,
-                                                            mappings: [3: buttonCombo],
+                                                            mappings: [3: buttonAction],
                                                             claimedByWheel: { _ in false }) == nil
                 && MouseButtonShortcutSupport.firesShortcut(for: 4, isAvailable: true, isEnabled: true,
-                                                            mappings: [3: buttonCombo],
+                                                            mappings: [3: buttonAction],
                                                             claimedByWheel: { _ in false }) == nil,
                "hub-off, switch-off and unmapped buttons all stay inert")
         suite.expect(!MouseButtonShortcutSupport.claimsButton(3) && !MouseButtonShortcutSupport.claimsButton(4),
@@ -2175,7 +2195,7 @@ enum PointerInputFeatureTests {
         var callSitesMissingShortcutSwitch: [String] = []
         for (index, line) in spacesServiceLines.enumerated()
         where isCodeLine(line)
-            && line.contains("guard let shortcut = MouseButtonShortcutSupport.firesShortcut(") {
+            && line.contains("guard let action = MouseButtonShortcutSupport.firesShortcut(") {
             shortcutCallSites += 1
             let window = spacesServiceLines[index...].prefix(7)
             let readsSwitch = window.contains {
